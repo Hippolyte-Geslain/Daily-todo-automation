@@ -1,5 +1,5 @@
 {
-  "name": "Daily Summary Workflow",
+  "name": "Daily Todo Automation",
   "nodes": [
     {
       "parameters": {},
@@ -7,7 +7,7 @@
       "type": "n8n-nodes-base.start",
       "typeVersion": 1,
       "position": [
-        250,
+        240,
         300
       ]
     },
@@ -15,14 +15,17 @@
       "parameters": {
         "operation": "getAll",
         "resource": "event",
-        "options": {}
+        "options": {
+          "singleEvents": true,
+          "orderBy": "startTime"
+        }
       },
       "name": "GoogleCalendar",
       "type": "n8n-nodes-base.googleCalendar",
       "typeVersion": 1,
       "position": [
-        450,
-        300
+        460,
+        200
       ],
       "credentials": {
         "googleCalendarOAuth2Api": {
@@ -35,14 +38,17 @@
       "parameters": {
         "operation": "getAll",
         "resource": "message",
-        "options": {}
+        "limit": 15,
+        "options": {
+          "q": "is:unread category:primary"
+        }
       },
       "name": "Gmail",
       "type": "n8n-nodes-base.gmail",
       "typeVersion": 1,
       "position": [
-        450,
-        500
+        460,
+        400
       ],
       "credentials": {
         "gmailOAuth2Api": {
@@ -53,15 +59,28 @@
     },
     {
       "parameters": {
-        "operation": "summarize",
-        "text": "={{ $node[\"GoogleCalendar\"].json[\"summary\"] }} {{ $node[\"Gmail\"].json[\"snippet\"] }}"
+        "mode": "append"
+      },
+      "name": "Merge",
+      "type": "n8n-nodes-base.merge",
+      "typeVersion": 1,
+      "position": [
+        680,
+        300
+      ]
+    },
+    {
+      "parameters": {
+        "model": "gpt-4o-mini",
+        "prompt": "=Voici mes données pour aujourd'hui. Fais-moi un résumé concis des priorités, des réunions à ne pas rater et des emails urgents sous forme de liste à puces.\n\n📅 CALENDRIER :\n{{ $items(\"GoogleCalendar\").map(i => i.json.summary + \" (\" + i.json.start.dateTime + \")\").join(\"\\n\") }}\n\n📧 EMAILS NON LUS :\n{{ $items(\"Gmail\").map(i => \"- \" + i.json.snippet).join(\"\\n\") }}",
+        "maxTokens": 500
       },
       "name": "Summarize",
       "type": "n8n-nodes-base.openai",
       "typeVersion": 1,
       "position": [
-        650,
-        400
+        880,
+        300
       ],
       "credentials": {
         "openAiApi": {
@@ -76,8 +95,8 @@
       "type": "n8n-nodes-base.noOp",
       "typeVersion": 1,
       "position": [
-        850,
-        400
+        1100,
+        300
       ]
     }
   ],
@@ -102,7 +121,7 @@
       "main": [
         [
           {
-            "node": "Summarize",
+            "node": "Merge",
             "type": "main",
             "index": 0
           }
@@ -113,9 +132,20 @@
       "main": [
         [
           {
-            "node": "Summarize",
+            "node": "Merge",
             "type": "main",
             "index": 1
+          }
+        ]
+      ]
+    },
+    "Merge": {
+      "main": [
+        [
+          {
+            "node": "Summarize",
+            "type": "main",
+            "index": 0
           }
         ]
       ]
