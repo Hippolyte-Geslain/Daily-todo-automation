@@ -1,46 +1,70 @@
 name: Daily Todo Automation
 
-# Déclencheurs
 on:
   schedule:
-    # Cron : À 8h00 UTC tous les jours (vérifie ton fuseau horaire, UTC est souvent -1h ou -2h vs France)
-    - cron: '0 8 * * *'
-  # Permet de lancer manuellement depuis l'interface GitHub pour tester
-  workflow_dispatch:
+    - cron: '0 8 * * *' # Tous les jours à 8h00
+  workflow_dispatch:      # Permet le lancement manuel
 
 jobs:
   run-automation:
     runs-on: ubuntu-latest
 
     steps:
-      # 1. Récupérer le code du dépôt
+      # 1. On récupère tout le code du dépôt
       - name: Checkout repository
         uses: actions/checkout@v4
 
-      # 2. Installer Node.js (Version 20 comme demandé)
+      # 2. VÉRIFICATION (Debug) : On liste les fichiers pour être sûr
+      - name: 🔍 Vérifier la présence du fichier
+        run: |
+          ls -la
+          if [ -f "./workflow.json" ]; then
+            echo "✅ Le fichier workflow.json est bien là !"
+          else
+            echo "❌ ERREUR : Le fichier workflow.json est introuvable à la racine."
+            exit 1
+          fi
+
+      # 3. Installation de Node.js (pour n8n)
       - name: Setup Node.js
         uses: actions/setup-node@v4
         with:
           node-version: '20'
 
-      # 3. Installer n8n
+      # 4. Installation de Python (INDISPENSABLE car ton workflow utilise Python)
+      - name: Setup Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.10'
+
+      # 5. Création de l'environnement virtuel Python pour n8n
+      # Cela corrige l'erreur "Failed to start Python task runner"
+      - name: Setup Python Virtual Env
+        run: |
+          python -m venv /home/runner/.n8n/python_env
+          source /home/runner/.n8n/python_env/bin/activate
+          # Installe des librairies classiques au cas où ton script en a besoin
+          pip install requests pandas
+
+      # 6. Installation de n8n
       - name: Install n8n
         run: npm install -g n8n
 
-      # 4. Créer le fichier .env à partir des Secrets GitHub
-      # C'est l'étape CRITIQUE pour la sécurité. On injecte les secrets dans un fichier temporaire.
+      # 7. Création du fichier .env (Sécurité)
       - name: Create .env file
         run: |
           echo "GOOGLE_CALENDAR_OAUTH2_API_CREDENTIALS=${{ secrets.GOOGLE_CALENDAR_OAUTH2_API_CREDENTIALS }}" >> .env
           echo "GMAIL_OAUTH2_API_CREDENTIALS=${{ secrets.GMAIL_OAUTH2_API_CREDENTIALS }}" >> .env
           echo "OPENAI_API_CREDENTIALS=${{ secrets.OPENAI_API_CREDENTIALS }}" >> .env
-          # On exporte aussi une clé de chiffrement pour n8n (recommandé)
           echo "N8N_ENCRYPTION_KEY=${{ secrets.N8N_ENCRYPTION_KEY }}" >> .env
 
-      # 5. Exécuter le workflow
-      # On pointe vers le fichier workflow.json présent dans le dépôt
+      # 8. Exécution du workflow
       - name: Execute n8n Workflow
-        run: n8n execute --file=workflow.json
+        run: |
+          # On dit à n8n où trouver Python
+          export N8N_PYTHON_INTERPRETER=/home/runner/.n8n/python_env/bin/python
+          
+          # On lance avec le chemin explicite "./"
+          n8n execute --file=./workflow.json
         env:
-          # On s'assure que n8n a accès aux variables d'environnement si besoin direct
           N8N_ENCRYPTION_KEY: ${{ secrets.N8N_ENCRYPTION_KEY }}
